@@ -116,3 +116,18 @@ extra-watch-dirs = []             # directories to watch for triggering builds
 - **extra-watch-dirs**: A list of paths to directories that will be watched in
   the `watch` and `serve` commands. Changes to files under these directories will
   trigger rebuilds. Useful if your book depends on files outside its `src` directory.
+
+### Sitemap Generation
+
+The HTML renderer can automatically generate a sitemap.xml file for your book. This can be configured in the `book.toml` file:
+
+```toml
+[output.html.sitemap]
+enable = true              # enable sitemap generation
+change_frequency = "weekly"  # how often pages are likely to change
+priority = 0.5            # relative priority of this site (0.0 to 1.0)
+```
+
+Note: Sitemap generation requires the `site-url` parameter to be configured in your `[output.html]` section.
+
+The sitemap will help search engines better index your mdBook documentation and improve SEO.

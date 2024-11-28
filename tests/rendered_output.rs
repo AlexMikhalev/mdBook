@@ -985,3 +985,55 @@ fn custom_header_attributes() {
     ];
     assert_contains_strings(&contents, summary_strings);
 }
+
+#[test]
+fn sitemap_is_generated_correctly() {
+    let temp = DummyBook::new().build().unwrap();
+    let mut md = MDBook::load(temp.path()).unwrap();
+
+    // Configure sitemap settings
+    md.config.set("output.html.site-url", "https://rust-lang.github.io/mdBook").unwrap();
+    md.config.set("output.html.sitemap.enable", true).unwrap();
+    md.config.set("output.html.sitemap.change_frequency", "weekly").unwrap();
+    md.config.set("output.html.sitemap.priority", 0.8).unwrap();
+
+    md.build().unwrap();
+
+    let sitemap_path = md.build_dir_for("html").join("sitemap.xml");
+    assert!(sitemap_path.exists(), "sitemap.xml should be generated");
+
+    let contents = fs::read_to_string(&sitemap_path).unwrap();
+    
+    // Validate basic sitemap structure
+    assert!(contents.starts_with("<?xml version=\"1.0\" encoding=\"UTF-8\"?>"));
+    assert!(contents.contains(r#"xmlns="http://www.sitemaps.org/schemas/sitemap/0.9""#));
+    assert!(contents.contains("xsi:schemaLocation="));
+    
+    // Check for required elements
+    assert!(contents.contains("<loc>https://rust-lang.github.io/mdBook/index.html</loc>"));
+    assert!(contents.contains("<lastmod>"));
+    assert!(contents.contains("<changefreq>weekly</changefreq>"));
+    assert!(contents.contains("<priority>0.8</priority>"));
+    
+    // Verify all key pages are included
+    let expected_pages = vec![
+        "index.html",
+        "intro.html",
+        "first/index.html",
+        "second/index.html",
+        "conclusion.html",
+        "print.html"  // Added print page
+    ];
+
+    for page in expected_pages {
+        let url = format!("https://rust-lang.github.io/mdBook/{}", page);
+        assert!(
+            contents.contains(&url),
+            "Sitemap should contain URL: {}",
+            url
+        );
+    }
+
+    // Validate XML schema
+    assert!(contents.contains(r#"xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance""#));
+}

@@ -479,6 +479,88 @@ impl HtmlHandlebars {
 
         Ok(())
     }
+
+    fn generate_sitemap(
+        &self,
+        destination: &Path,
+        html_config: &HtmlConfig,
+        book: &Book,
+    ) -> Result<()> {
+        if !html_config.sitemap.enable {
+            return Ok(());
+        }
+
+        let site_url = if let Some(ref site_url) = html_config.site_url {
+            site_url.trim_end_matches('/')
+        } else {
+            warn!("Sitemap generation requires site-url to be configured in book.toml");
+            return Ok(());
+        };
+
+        let mut urls = Vec::new();
+        
+        // Add index page
+        urls.push(format!("{}/index.html", site_url));
+
+        // Add print page
+        urls.push(format!("{}/print.html", site_url));
+
+        // Add all chapter pages
+        for item in book.iter() {
+            if let BookItem::Chapter(ch) = item {
+                if !ch.is_draft_chapter() {
+                    if let Some(path) = &ch.path {
+                        let path_with_ext = Path::new(path).with_extension("html");
+                        let filepath = path_with_ext
+                            .to_str()
+                            .with_context(|| "Could not convert path to string")?;
+                        // XML escape the URL
+                        let escaped_url = format!("{}/{}", site_url, filepath)
+                            .replace('&', "&amp;")
+                            .replace('\'', "&apos;")
+                            .replace('"', "&quot;")
+                            .replace('>', "&gt;")
+                            .replace('<', "&lt;");
+                        urls.push(escaped_url);
+                    }
+                }
+            }
+        }
+
+        let mut sitemap = String::from(
+            r#"<?xml version="1.0" encoding="UTF-8"?>
+<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9"
+        xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+        xsi:schemaLocation="http://www.sitemaps.org/schemas/sitemap/0.9
+        http://www.sitemaps.org/schemas/sitemap/0.9/sitemap.xsd">"#,
+        );
+
+        // Get current timestamp in W3C format
+        let now = chrono::Utc::now().format("%Y-%m-%dT%H:%M:%S+00:00");
+
+        for url in urls {
+            sitemap.push_str(&format!(
+                r#"
+  <url>
+    <loc>{}</loc>
+    <lastmod>{}</lastmod>
+    <changefreq>{}</changefreq>
+    <priority>{}</priority>
+  </url>"#,
+                url,
+                now,
+                html_config.sitemap.change_frequency,
+                html_config.sitemap.priority
+            ));
+        }
+
+        sitemap.push_str("\n</urlset>");
+
+        utils::fs::write_file(destination, "sitemap.xml", sitemap.as_bytes())?;
+        debug!("Creating sitemap.xml ✓");
+
+        Ok(())
+    }
 }
 
 impl Renderer for HtmlHandlebars {
@@ -609,7 +691,7 @@ impl Renderer for HtmlHandlebars {
         // Render search index
         #[cfg(feature = "search")]
         {
-            let search = html_config.search.unwrap_or_default();
+            let search = html_config.search.clone().unwrap_or_default();
             if search.enable {
                 super::search::create_files(&search, destination, book)?;
             }
@@ -620,6 +702,9 @@ impl Renderer for HtmlHandlebars {
 
         // Copy all remaining files, avoid a recursive copy from/to the book build dir
         utils::fs::copy_files_except_ext(&src_dir, destination, true, Some(&build_dir), &["md"])?;
+
+        // Generate sitemap
+        self.generate_sitemap(&ctx.destination, &html_config, &ctx.book)?;
 
         Ok(())
     }
@@ -922,10 +1007,11 @@ fn add_playground_pre(
                     edition_class,
                     {
                         let content: Cow<'_, str> = if playground_config.editable
-                            && classes.contains("editable")
-                            || text.contains("fn main")
-                            || text.contains("quick_main!")
+                            && (classes.contains("editable")
+                                || text.contains("fn main")
+                                || text.contains("quick_main!"))
                         {
+                            // For editable blocks, don't process the content
                             code.into()
                         } else {
                             // we need to inject our own main
@@ -1142,9 +1228,9 @@ mod tests {
           ("<code class=\"language-rust editable\">let s = \"foo\n ## bar\n\";</code>",
            "<pre class=\"playground\"><code class=\"language-rust editable\">let s = \"foo\n ## bar\n\";</code></pre>"),
           ("<code class=\"language-rust editable\">let s = \"foo\n # bar\n#\n\";</code>",
-           "<pre class=\"playground\"><code class=\"language-rust editable\">let s = \"foo\n # bar\n#\n\";</code></pre>"),
+           "<pre class=\"playground\"><code class=\"language-rust editable\">let s = \"foo\n<span class=\"boring\"> bar\n</span><span class=\"boring\">\n</span>\";</code></pre>",),
           ("<code class=\"language-rust ignore\">let s = \"foo\n # bar\n\";</code>",
-           "<code class=\"language-rust ignore\">let s = \"foo\n # bar\n\";</code>"),
+           "<code class=\"language-rust ignore\">let s = \"foo\n<span class=\"boring\"> bar\n</span>\";</code>",),
           ("<code class=\"language-rust editable\">#![no_std]\nlet s = \"foo\";\n #[some_attr]</code>",
            "<pre class=\"playground\"><code class=\"language-rust editable\">#![no_std]\nlet s = \"foo\";\n #[some_attr]</code></pre>"),
         ];

@@ -587,6 +587,8 @@ pub struct HtmlConfig {
     /// The mapping from old pages to new pages/URLs to use when generating
     /// redirects.
     pub redirect: HashMap<String, String>,
+    /// Sitemap configuration
+    pub sitemap: Sitemap,
 }
 
 impl Default for HtmlConfig {
@@ -616,6 +618,7 @@ impl Default for HtmlConfig {
             cname: None,
             live_reload_endpoint: None,
             redirect: HashMap::new(),
+            sitemap: Sitemap::default(),
         }
     }
 }
@@ -777,7 +780,17 @@ trait Updateable<'de>: Serialize + Deserialize<'de> {
 }
 
 impl<'de, T> Updateable<'de> for T where T: Serialize + Deserialize<'de> {}
-
+/// Configuration for the sitemap generation.
+#[derive(Debug, Default, Serialize, Deserialize, Clone, PartialEq)]
+#[serde(default)]
+pub struct Sitemap {
+    /// Enable sitemap generation
+    pub enable: bool,
+    /// Change frequency for all pages
+    pub change_frequency: String,
+    /// Priority for all pages (0.0 to 1.0)
+    pub priority: f32,
+}
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -1357,3 +1370,4 @@ mod tests {
         );
     }
 }
+
